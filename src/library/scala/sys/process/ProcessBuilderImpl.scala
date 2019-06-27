@@ -17,6 +17,7 @@ package process
 import processInternal._
 import Process._
 import java.io.{ FileInputStream, FileOutputStream }
+import java.lang.ProcessBuilder.Redirect
 import BasicIO.{ LazilyListed, Streamed, Uncloseable }
 import Uncloseable.protect
 import scala.util.control.NonFatal
@@ -75,16 +76,17 @@ private[process] trait ProcessBuilderImpl {
     override def run(io: ProcessIO): Process = {
       import io._
 
+      if(io.connectInput) p.redirectInput(Redirect.INHERIT)
       val process = p.start() // start the external process
 
       // spawn threads that process the input, output, and error streams using the functions defined in `io`
-      val inThread  = Spawn("Simple-input", daemon = true)(writeInput(process.getOutputStream))
+      Some(Spawn("Simple-input", daemon = true)(writeInput(process.getOutputStream)))
       val outThread = Spawn("Simple-output", daemonizeThreads)(processOutput(process.getInputStream))
       val errorThread =
         if (p.redirectErrorStream) Nil
         else List(Spawn("Simple-error", daemonizeThreads)(processError(process.getErrorStream)))
 
-      new SimpleProcess(process, inThread, outThread :: errorThread)
+      new SimpleProcess(process, outThread :: errorThread)
     }
     override def toString = p.command.toString
     override def canPipeTo = true

@@ -245,25 +245,19 @@ private[process] trait ProcessImpl {
   }
 
   /** A thin wrapper around a java.lang.Process.  `outputThreads` are the Threads created to read from the
-  * output and error streams of the process.  `inputThread` is the Thread created to write to the input stream of
-  * the process.
-  * The implementation of `exitValue` interrupts `inputThread` and then waits until all I/O threads die before
-  * returning. */
-  private[process] class SimpleProcess(p: JProcess, inputThread: Thread, outputThreads: List[Thread]) extends Process {
+  * output and error streams of the process.
+  * The implementation of `exitValue` waits until all I/O threads die before returning. */
+  private[process] class SimpleProcess(p: JProcess, outputThreads: List[Thread]) extends Process {
     override def isAlive() = p.isAlive()
     override def exitValue() = {
-      try p.waitFor()                   // wait for the process to terminate
-      finally inputThread.interrupt()   // we interrupt the input thread to notify it that it can terminate
+      p.waitFor()                       // wait for the process to terminate
       outputThreads foreach (_.join())  // this ensures that all output is complete before returning (waitFor does not ensure this)
 
       p.exitValue()
     }
     override def destroy() = {
-      try {
-        outputThreads foreach (_.interrupt()) // on destroy, don't bother consuming any more output
-        p.destroy()
-      }
-      finally inputThread.interrupt()
+      outputThreads foreach (_.interrupt()) // on destroy, don't bother consuming any more output
+      p.destroy()
     }
   }
   private[process] final class ThreadProcess(thread: Thread, success: SyncVar[Boolean]) extends Process {
